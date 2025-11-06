@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-11-05 19:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "openai_api_key",
+  "model_name",
+  "temperature",
+  "max_tokens",
+  "enable_logging",
+  "enable_embeddings"
+ ],
+ "fields": [
+  {
+   "description": "Enter your OpenAI API key for AI chat functionality",
+   "fieldname": "openai_api_key",
+   "fieldtype": "Data",
+   "label": "OpenAI API Key"
+  },
+  {
+   "default": "gpt-4o-mini",
+   "fieldname": "model_name",
+   "fieldtype": "Select",
+   "label": "Model Name",
+   "options": "gpt-4o-mini\ngpt-4o\ngpt-4-turbo\ngpt-3.5-turbo"
+  },
+  {
+   "default": "0.7",
+   "description": "Controls randomness (0-1). Lower is more focused.",
+   "fieldname": "temperature",
+   "fieldtype": "Float",
+   "label": "Temperature"
+  },
+  {
+   "default": "2000",
+   "description": "Maximum tokens in response",
+   "fieldname": "max_tokens",
+   "fieldtype": "Int",
+   "label": "Max Tokens"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_logging",
+   "fieldtype": "Check",
+   "label": "Enable Logging"
+  },
+  {
+   "default": "0",
+   "description": "Enable vector embeddings for better context retrieval",
+   "fieldname": "enable_embeddings",
+   "fieldtype": "Check",
+   "label": "Enable Embeddings (RAG)"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2025-11-06 02:18:42.155731",
+ "modified_by": "Administrator",
+ "module": "ERPNext AI Chat",
+ "name": "AI Chat Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
