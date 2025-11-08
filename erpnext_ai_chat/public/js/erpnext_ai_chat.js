@@ -4,6 +4,9 @@ frappe.provide('erpnext_ai_chat');
 erpnext_ai_chat.recognition = null;
 erpnext_ai_chat.isListening = false;
 
+// Chart counter for unique IDs
+erpnext_ai_chat.chartCounter = 0;
+
 $(document).ready(function() {
     // Add AI Chat button to navbar
     if (frappe.boot.user && frappe.boot.user.name !== 'Guest') {
@@ -288,7 +291,13 @@ erpnext_ai_chat.sendMessage = function() {
             
             if (r.message && r.message.success) {
                 erpnext_ai_chat.currentSessionId = r.message.session_id;
-                erpnext_ai_chat.addMessage('ai', r.message.message);
+                const response_text = r.message.response || r.message.message;
+                erpnext_ai_chat.addMessage('ai', response_text);
+                
+                // Render chart if provided
+                if (r.message.chart_data) {
+                    erpnext_ai_chat.renderChart(r.message.chart_data);
+                }
             } else {
                 erpnext_ai_chat.addMessage('ai', 'Sorry, I encountered an error processing your request.');
             }
@@ -416,4 +425,46 @@ erpnext_ai_chat.clearHistory = function() {
             });
         }
     );
+};
+
+erpnext_ai_chat.renderChart = function(chartData) {
+    if (!chartData) return;
+    
+    const $messages = erpnext_ai_chat.chatDialog.fields_dict.chat_container.$wrapper.find('.ai-chat-messages');
+    
+    erpnext_ai_chat.chartCounter++;
+    const chartId = 'chart-' + erpnext_ai_chat.chartCounter;
+    
+    // Add chart container
+    $messages.append(`
+        <div class="ai-message" style="align-self: flex-start; margin: 10px 0; padding: 15px; background: white; border-radius: 8px; max-width: 90%; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div class="chart-container">
+                <div id="${chartId}" style="min-height: 300px;"></div>
+            </div>
+        </div>
+    `);
+    
+    $messages.scrollTop($messages[0].scrollHeight);
+    
+    // Render chart using Frappe Charts
+    setTimeout(() => {
+        try {
+            new frappe.Chart(`#${chartId}`, {
+                title: chartData.title || '',
+                data: {
+                    labels: chartData.labels || [],
+                    datasets: chartData.datasets || []
+                },
+                type: chartData.type || 'bar',
+                height: chartData.height || 300,
+                colors: chartData.colors || ['#7cd6fd', '#743ee2', '#5e64ff', '#ff5858', '#ffa00a'],
+                axisOptions: chartData.axisOptions || {},
+                barOptions: chartData.barOptions || {spaceRatio: 0.5},
+                lineOptions: chartData.lineOptions || {}
+            });
+        } catch (e) {
+            console.error('Error rendering chart:', e);
+            $(`#${chartId}`).html('<p style="color: red;">Error rendering chart: ' + e.message + '</p>');
+        }
+    }, 100);
 };

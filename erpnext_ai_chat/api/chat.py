@@ -13,7 +13,7 @@ def send_message(message, session_id=None):
         session_id: Optional session ID to continue a conversation
     
     Returns:
-        dict: Response with AI message and session info
+        dict: Response with AI message, session info, and optional chart data
     """
     try:
         if not message:
@@ -24,17 +24,53 @@ def send_message(message, session_id=None):
         
         response = agent.chat(message)
         
+        # Check if user requested a chart visualization
+        chart_data = None
+        if response["success"] and any(keyword in message.lower() for keyword in ['chart', 'graph', 'visualize', 'plot', 'show chart']):
+            from erpnext_ai_chat.ai_agent.charts import parse_table_to_chart
+            
+            response_text = response["message"]
+            
+            # Determine chart type from message
+            chart_type = "bar"  # default
+            if "pie" in message.lower():
+                chart_type = "pie"
+            elif "donut" in message.lower():
+                chart_type = "donut"
+            elif "line" in message.lower():
+                chart_type = "line"
+            elif "percentage" in message.lower():
+                chart_type = "percentage"
+            
+            # Extract title from message context
+            title = "Data Visualization"
+            if "sales" in message.lower():
+                title = "Sales Data"
+            elif "purchase" in message.lower():
+                title = "Purchase Data"
+            elif "customer" in message.lower():
+                title = "Customer Data"
+            elif "employee" in message.lower():
+                title = "Employee Data"
+            elif "status" in message.lower():
+                title = "Status Summary"
+            
+            chart_data = parse_table_to_chart(response_text, chart_type, title)
+        
         return {
             "success": response["success"],
+            "response": response["message"],
             "message": response["message"],
             "session_id": agent.session_id,
-            "user": user
+            "user": user,
+            "chart_data": chart_data
         }
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "AI Chat API Error")
         return {
             "success": False,
-            "message": f"Error: {str(e)}"
+            "message": f"Error: {str(e)}",
+            "response": f"Error: {str(e)}"
         }
 
 
