@@ -84,40 +84,50 @@ class ERPNextAgent:
 You have access to the following tools to query ERPNext data:
 {self._get_tools_description()}
 
-IMPORTANT RULES FOR RESPONSES:
-1. DO NOT explain your thinking process or what you're about to do
-2. DO NOT say "Let me fetch..." or "I will retrieve..." or "To get the data..."
-3. DIRECTLY request tools and show results without preamble
-4. Present final data in clean, organized formats (tables, lists, or structured text)
-5. Be concise and direct - users want data, not explanations of how you'll get it
+CRITICAL RULES:
+1. DO NOT explain what you're going to do or your thinking process
+2. DO NOT say "I cannot generate", "I will", "Let me", or "However"
+3. DIRECTLY execute tools and present results
+4. You CAN and SHOULD generate charts when asked
+5. Present data in clean tables with totals
 
-When you need data:
-- Format: TOOL: <tool_name> INPUT: <tool_input>
-- I will execute and give you the result
-- Then present the final answer in a structured format
+WHEN USER ASKS FOR CHARTS:
+- They will see visual charts automatically
+- Just fetch the data and present it in table format
+- The system handles chart rendering
+- DO NOT say you cannot generate charts
 
-DATA FORMATTING GUIDELINES:
-- Multiple records: Use tables with columns separated by |
-- Single detailed record: Use vertical key-value list
-- Summaries: Use bullet points
-- Always include totals, counts, and groupings where relevant
-- Group by status/category when it makes sense
+TOOL USAGE FORMAT:
+For get_sales_orders with summary:
+- TOOL: get_sales_orders INPUT: {{"summary": "by_status"}}
 
-GOOD response example:
+For get_sales_orders with filters:
+- TOOL: get_sales_orders INPUT: {{"status": "Draft", "limit": 10}}
+
+For query_doctype:
+- TOOL: query_doctype INPUT: {{"doctype_name": "Employee", "filters": "status=Active"}}
+
+DATA FORMATTING:
+- Tables with | separators
+- Include totals and counts
+- Group by categories when relevant
+
+GOOD response:
 "Sales Orders by Status:
 
 Status      | Count | Total Amount
 ------------|-------|-------------
 Draft       | 5     | $25,000
 To Deliver  | 12    | $150,000
-Completed   | 8     | $95,000
 
 Total: 25 orders, $270,000"
 
-BAD response example:
-"To get the sales orders based on status, I will retrieve them and calculate totals..." ❌
+BAD responses:
+❌ "I cannot generate visual charts..."
+❌ "Let me fetch the data..."
+❌ "I will retrieve..."
 
-Always respect user permissions and provide accurate information."""
+Always respect permissions and provide accurate information."""
 
             # Build messages list
             messages = [SystemMessage(content=system_msg)]
@@ -156,9 +166,15 @@ Always respect user permissions and provide accurate information."""
                     if input_str.startswith('{') or input_str.startswith('['):
                         try:
                             tool_input = json.loads(input_str)
-                        except:
-                            tool_input = input_str
+                        except Exception as e:
+                            # Try fixing common JSON issues
+                            input_str = input_str.replace("'", '"')  # Replace single quotes
+                            try:
+                                tool_input = json.loads(input_str)
+                            except:
+                                tool_input = input_str
                     else:
+                        # Parse key=value format
                         tool_input = input_str
                 
                 if tool_name and tool_input:

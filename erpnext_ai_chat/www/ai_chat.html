@@ -1,0 +1,519 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ _("AI Assistant") }}{% endblock %}
+
+{% block page_content %}
+<div id="ai-chat-app"></div>
+{% endblock %}
+
+{% block script %}
+<script>
+// Load Vue app
+frappe.ready(() => {
+    if (typeof Vue === 'undefined') {
+        // Load Vue if not available
+        frappe.require([
+            '/assets/frappe/node_modules/vue/dist/vue.global.prod.js'
+        ], () => {
+            initAIChatApp();
+        });
+    } else {
+        initAIChatApp();
+    }
+});
+
+function initAIChatApp() {
+    const { createApp } = Vue;
+    
+    const app = createApp({
+        data() {
+            return {
+                messages: [],
+                currentMessage: '',
+                sessionId: null,
+                isLoading: false,
+                isListening: false,
+                recognition: null,
+                chartCounter: 0
+            };
+        },
+        mounted() {
+            this.initVoiceRecognition();
+            this.loadChatHistory();
+        },
+        methods: {
+            async sendMessage() {
+                if (!this.currentMessage.trim()) return;
+                
+                const userMessage = this.currentMessage;
+                this.messages.push({
+                    type: 'user',
+                    content: userMessage,
+                    timestamp: new Date()
+                });
+                
+                this.currentMessage = '';
+                this.isLoading = true;
+                
+                try {
+                    const response = await frappe.call({
+                        method: 'erpnext_ai_chat.api.chat.send_message',
+                        args: {
+                            message: userMessage,
+                            session_id: this.sessionId
+                        }
+                    });
+                    
+                    if (response.message && response.message.success) {
+                        this.sessionId = response.message.session_id;
+                        
+                        this.messages.push({
+                            type: 'ai',
+                            content: response.message.response || response.message.message,
+                            timestamp: new Date(),
+                            chartData: response.message.chart_data
+                        });
+                        
+                        // Scroll to bottom
+                        this.$nextTick(() => {
+                            this.scrollToBottom();
+                            
+                            // Render chart if available
+                            if (response.message.chart_data) {
+                                this.renderChart(response.message.chart_data);
+                            }
+                        });
+                    } else {
+                        this.messages.push({
+                            type: 'ai',
+                            content: 'Sorry, I encountered an error. Please try again.',
+                            timestamp: new Date()
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    this.messages.push({
+                        type: 'ai',
+                        content: 'Sorry, there was a connection error.',
+                        timestamp: new Date()
+                    });
+                } finally {
+                    this.isLoading = false;
+                }
+            },
+            
+            initVoiceRecognition() {
+                if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    this.recognition = new SpeechRecognition();
+                    
+                    this.recognition.continuous = false;
+                    this.recognition.interimResults = true;
+                    this.recognition.lang = 'en-US';
+                    
+                    this.recognition.onstart = () => {
+                        this.isListening = true;
+                    };
+                    
+                    this.recognition.onend = () => {
+                        this.isListening = false;
+                    };
+                    
+                    this.recognition.onresult = (event) => {
+                        let finalTranscript = '';
+                        
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                            if (event.results[i].isFinal) {
+                                finalTranscript += event.results[i][0].transcript;
+                            }
+                        }
+                        
+                        if (finalTranscript) {
+                            this.currentMessage = finalTranscript;
+                            setTimeout(() => {
+                                this.sendMessage();
+                            }, 500);
+                        }
+                    };
+                    
+                    this.recognition.onerror = (event) => {
+                        console.error('Voice recognition error:', event.error);
+                        this.isListening = false;
+                        
+                        if (event.error !== 'no-speech') {
+                            frappe.show_alert({
+                                message: 'Voice recognition error: ' + event.error,
+                                indicator: 'red'
+                            });
+                        }
+                    };
+                }
+            },
+            
+            toggleVoice() {
+                if (!this.recognition) {
+                    frappe.show_alert({
+                        message: 'Voice recognition not supported in your browser',
+                        indicator: 'red'
+                    });
+                    return;
+                }
+                
+                if (this.isListening) {
+                    this.recognition.stop();
+                } else {
+                    this.currentMessage = '';
+                    this.recognition.start();
+                    frappe.show_alert({
+                        message: 'Listening... Speak now!',
+                        indicator: 'blue'
+                    });
+                }
+            },
+            
+            async loadChatHistory() {
+                try {
+                    const response = await frappe.call({
+                        method: 'erpnext_ai_chat.api.chat.get_chat_history',
+                        args: {
+                            session_id: this.sessionId
+                        }
+                    });
+                    
+                    if (response.message && response.message.length > 0) {
+                        this.messages = response.message.map(msg => ({
+                            type: msg.message_type.toLowerCase() === 'human' ? 'user' : 'ai',
+                            content: msg.content,
+                            timestamp: new Date(msg.creation)
+                        }));
+                    }
+                } catch (error) {
+                    console.error('Error loading history:', error);
+                }
+            },
+            
+            async clearHistory() {
+                if (!this.sessionId) {
+                    frappe.show_alert({message: 'No active session', indicator: 'orange'});
+                    return;
+                }
+                
+                frappe.confirm(
+                    'Are you sure you want to clear the chat history?',
+                    async () => {
+                        try {
+                            await frappe.call({
+                                method: 'erpnext_ai_chat.api.chat.clear_chat_history',
+                                args: {session_id: this.sessionId}
+                            });
+                            
+                            this.messages = [];
+                            frappe.show_alert({message: 'Chat history cleared', indicator: 'green'});
+                        } catch (error) {
+                            console.error('Error clearing history:', error);
+                        }
+                    }
+                );
+            },
+            
+            async newSession() {
+                try {
+                    const response = await frappe.call({
+                        method: 'erpnext_ai_chat.api.chat.create_new_session'
+                    });
+                    
+                    if (response.message && response.message.success) {
+                        this.sessionId = response.message.session_id;
+                        this.messages = [];
+                        frappe.show_alert({message: 'New chat session created', indicator: 'green'});
+                    }
+                } catch (error) {
+                    console.error('Error creating session:', error);
+                }
+            },
+            
+            scrollToBottom() {
+                const container = this.$refs.messageContainer;
+                if (container) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            },
+            
+            renderChart(chartData) {
+                if (!chartData) return;
+                
+                this.$nextTick(() => {
+                    this.chartCounter++;
+                    const chartId = 'chart-' + this.chartCounter;
+                    
+                    setTimeout(() => {
+                        try {
+                            new frappe.Chart(`#${chartId}`, {
+                                title: chartData.title || '',
+                                data: {
+                                    labels: chartData.labels || [],
+                                    datasets: chartData.datasets || []
+                                },
+                                type: chartData.type || 'bar',
+                                height: chartData.height || 300,
+                                colors: chartData.colors || ['#7cd6fd', '#743ee2', '#5e64ff', '#ff5858', '#ffa00a'],
+                                axisOptions: chartData.axisOptions || {},
+                                barOptions: chartData.barOptions || {spaceRatio: 0.5},
+                                lineOptions: chartData.lineOptions || {}
+                            });
+                        } catch (e) {
+                            console.error('Error rendering chart:', e);
+                        }
+                    }, 200);
+                });
+            },
+            
+            formatTime(date) {
+                return new Date(date).toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+        },
+        
+        template: `
+            <div class="ai-chat-container">
+                <div class="chat-header">
+                    <h3><i class="fa fa-robot"></i> AI Assistant</h3>
+                    <div class="chat-actions">
+                        <button class="btn btn-sm btn-default" @click="newSession">
+                            <i class="fa fa-plus"></i> New Chat
+                        </button>
+                        <button class="btn btn-sm btn-default" @click="clearHistory">
+                            <i class="fa fa-trash"></i> Clear
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="chat-messages" ref="messageContainer">
+                    <div v-if="messages.length === 0" class="welcome-message">
+                        <p><strong>Welcome to ERPNext AI Assistant!</strong></p>
+                        <p>Ask me anything about your ERPNext data:</p>
+                        <ul>
+                            <li>💼 "Show me pending sales orders"</li>
+                            <li>🔍 "Search for customer XYZ"</li>
+                            <li>📦 "What's the stock balance for item ABC?"</li>
+                            <li>📊 "Show sales orders by status as a chart"</li>
+                        </ul>
+                        <p v-if="recognition">🎤 <strong>Try voice input!</strong> Click the microphone and speak.</p>
+                    </div>
+                    
+                    <div v-for="(msg, index) in messages" :key="index" 
+                         :class="['message', msg.type === 'user' ? 'user-message' : 'ai-message']">
+                        <div class="message-content">{{ msg.content }}</div>
+                        <div v-if="msg.chartData" :id="'chart-' + (index + 1)" class="chart-container"></div>
+                        <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
+                    </div>
+                    
+                    <div v-if="isLoading" class="typing-indicator">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+                
+                <div class="chat-input-wrapper">
+                    <input 
+                        type="text" 
+                        class="form-control" 
+                        v-model="currentMessage"
+                        @keypress.enter="sendMessage"
+                        :disabled="isLoading"
+                        placeholder="Type your message or use voice..."
+                    />
+                    <button 
+                        v-if="recognition"
+                        class="btn btn-default voice-btn"
+                        :class="{listening: isListening}"
+                        @click="toggleVoice"
+                        :disabled="isLoading"
+                    >
+                        <svg class="voice-wave-icon" width="24" height="24" viewBox="0 0 24 24">
+                            <rect class="wave-bar" x="4" y="8" width="2" height="8" rx="1" fill="currentColor"/>
+                            <rect class="wave-bar" x="8" y="5" width="2" height="14" rx="1" fill="currentColor"/>
+                            <rect class="wave-bar" x="12" y="2" width="2" height="20" rx="1" fill="currentColor"/>
+                            <rect class="wave-bar" x="16" y="5" width="2" height="14" rx="1" fill="currentColor"/>
+                            <rect class="wave-bar" x="20" y="8" width="2" height="8" rx="1" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button 
+                        class="btn btn-primary send-btn"
+                        @click="sendMessage"
+                        :disabled="isLoading || !currentMessage.trim()"
+                    >
+                        <i class="fa fa-paper-plane"></i> Send
+                    </button>
+                </div>
+            </div>
+        `
+    });
+    
+    app.mount('#ai-chat-app');
+}
+</script>
+
+<style>
+.ai-chat-container {
+    max-width: 1200px;
+    margin: 20px auto;
+    height: calc(100vh - 150px);
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.chat-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-header h3 {
+    margin: 0;
+    color: #2490ef;
+}
+
+.chat-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    background: #f7f7f7;
+}
+
+.welcome-message {
+    text-align: center;
+    color: #888;
+    padding: 40px 20px;
+}
+
+.welcome-message ul {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+}
+
+.welcome-message li {
+    margin: 10px 0;
+    color: #666;
+}
+
+.message {
+    max-width: 70%;
+    padding: 12px 16px;
+    margin-bottom: 15px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.user-message {
+    margin-left: auto;
+    background: #2490ef;
+    color: white;
+}
+
+.ai-message {
+    margin-right: auto;
+    background: white;
+}
+
+.message-content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.message-time {
+    font-size: 0.75em;
+    opacity: 0.7;
+    margin-top: 5px;
+}
+
+.chart-container {
+    margin-top: 15px;
+    min-height: 300px;
+}
+
+.typing-indicator {
+    display: flex;
+    gap: 5px;
+    padding: 10px;
+}
+
+.typing-indicator span {
+    width: 8px;
+    height: 8px;
+    background: #888;
+    border-radius: 50%;
+    animation: blink 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes blink {
+    0%, 80%, 100% { opacity: 0; }
+    40% { opacity: 1; }
+}
+
+.chat-input-wrapper {
+    display: flex;
+    gap: 10px;
+    padding: 15px 20px;
+    border-top: 1px solid #e0e0e0;
+    background: white;
+}
+
+.chat-input-wrapper input {
+    flex: 1;
+}
+
+.voice-btn {
+    padding: 8px 16px;
+}
+
+.voice-btn.listening {
+    background: #ff4444 !important;
+    color: white !important;
+    animation: pulse 1.5s infinite;
+}
+
+.voice-wave-icon .wave-bar {
+    transition: all 0.2s;
+}
+
+.voice-btn.listening .wave-bar {
+    animation: wave-bounce 0.6s infinite ease-in-out;
+}
+
+.voice-btn.listening .wave-bar:nth-child(1) { animation-delay: 0s; }
+.voice-btn.listening .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+.voice-btn.listening .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+.voice-btn.listening .wave-bar:nth-child(4) { animation-delay: 0.3s; }
+.voice-btn.listening .wave-bar:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7); }
+    50% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+}
+
+@keyframes wave-bounce {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(0.5); }
+}
+
+.send-btn {
+    white-space: nowrap;
+}
+</style>
+{% endblock %}
