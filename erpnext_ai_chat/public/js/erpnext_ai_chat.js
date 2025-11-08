@@ -58,7 +58,6 @@ function initVoiceRecognition() {
             const $wrapper = erpnext_ai_chat.chatDialog.fields_dict.chat_container.$wrapper;
             const $voiceBtn = $wrapper.find('.ai-chat-voice');
             $voiceBtn.removeClass('listening');
-            $voiceBtn.find('.voice-status').text('🎤');
             
             if (event.error === 'no-speech') {
                 frappe.show_alert({message: __('No speech detected. Please try again.'), indicator: 'orange'});
@@ -129,7 +128,15 @@ erpnext_ai_chat.initChat = function() {
     const voiceSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
     const voiceButton = voiceSupported ? `
         <button class="btn btn-default ai-chat-voice" title="Voice Input (Click and speak)">
-            <span class="voice-status">🎤</span>
+            <span class="voice-status">
+                <svg class="voice-wave-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect class="wave-bar bar-1" x="4" y="8" width="2" height="8" rx="1" fill="currentColor"/>
+                    <rect class="wave-bar bar-2" x="8" y="5" width="2" height="14" rx="1" fill="currentColor"/>
+                    <rect class="wave-bar bar-3" x="12" y="2" width="2" height="20" rx="1" fill="currentColor"/>
+                    <rect class="wave-bar bar-4" x="16" y="5" width="2" height="14" rx="1" fill="currentColor"/>
+                    <rect class="wave-bar bar-5" x="20" y="8" width="2" height="8" rx="1" fill="currentColor"/>
+                </svg>
+            </span>
         </button>
     ` : '';
     
@@ -183,7 +190,8 @@ erpnext_ai_chat.setupEventHandlers = function() {
     });
     
     $wrapper.find('.ai-chat-input').on('keypress', function(e) {
-        if (e.which === 13) {
+        if (e.which === 13 && !e.shiftKey) { // Enter without Shift
+            e.preventDefault();
             erpnext_ai_chat.sendMessage();
         }
     });
@@ -202,6 +210,16 @@ erpnext_ai_chat.setupEventHandlers = function() {
     });
     
     // Keyboard shortcut for voice input (Ctrl+Shift+V)
+    // Prevent Enter from triggering voice when there's text
+    $wrapper.find('.ai-chat-input').on('keydown', function(e) {
+        // Only prevent Enter if input is empty and we want voice
+        // Otherwise Enter should send message
+        if (e.which === 13 && !e.shiftKey) {
+            // Let the keypress handler deal with it
+            return;
+        }
+    });
+    
     $(document).on('keydown.voice-input', function(e) {
         if (e.ctrlKey && e.shiftKey && e.which === 86) { // Ctrl+Shift+V
             e.preventDefault();
@@ -226,14 +244,12 @@ erpnext_ai_chat.toggleVoiceInput = function() {
         // Stop listening
         erpnext_ai_chat.recognition.stop();
         $voiceBtn.removeClass('listening');
-        $voiceBtn.find('.voice-status').text('🎤');
     } else {
         // Start listening
         try {
             $input.val(''); // Clear input
             erpnext_ai_chat.recognition.start();
             $voiceBtn.addClass('listening');
-            $voiceBtn.find('.voice-status').text('🔴');
             
             frappe.show_alert({
                 message: __('Listening... Speak now!'),

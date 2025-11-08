@@ -65,31 +65,63 @@
     border-color: #ddd;
 }
 
+/* Voice wave icon */
+.voice-wave-icon {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.voice-wave-icon .wave-bar {
+    transform-origin: center;
+    transition: all 0.2s ease;
+}
+
+/* Listening state - animate the wave bars */
 .ai-chat-voice.listening {
-    background-color: #fee;
-    border-color: #f00;
+    background-color: #ff4444 !important;
+    color: white !important;
     animation: pulse 1.5s infinite;
 }
 
-.ai-chat-voice.listening .voice-status {
-    animation: pulse-icon 1s infinite;
+.ai-chat-voice.listening .wave-bar {
+    animation: wave-bounce 0.6s infinite ease-in-out;
+}
+
+.ai-chat-voice.listening .bar-1 {
+    animation-delay: 0s;
+}
+
+.ai-chat-voice.listening .bar-2 {
+    animation-delay: 0.1s;
+}
+
+.ai-chat-voice.listening .bar-3 {
+    animation-delay: 0.2s;
+}
+
+.ai-chat-voice.listening .bar-4 {
+    animation-delay: 0.3s;
+}
+
+.ai-chat-voice.listening .bar-5 {
+    animation-delay: 0.4s;
 }
 
 @keyframes pulse {
     0%, 100% {
-        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4);
+        box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
     }
     50% {
-        box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
+        box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
     }
 }
 
-@keyframes pulse-icon {
+@keyframes wave-bounce {
     0%, 100% {
-        transform: scale(1);
+        transform: scaleY(1);
     }
     50% {
-        transform: scale(1.1);
+        transform: scaleY(0.5);
     }
 }
 
