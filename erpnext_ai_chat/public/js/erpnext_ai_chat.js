@@ -89,12 +89,15 @@ function initVoiceRecognition() {
             const $input = $wrapper.find('.ai-chat-input');
             
             if (finalTranscript) {
-                $input.val(finalTranscript);
-                // Automatically send the message
+                $input.val(finalTranscript.trim());
+                // Automatically send the message after brief delay
                 setTimeout(() => {
-                    erpnext_ai_chat.sendMessage();
-                }, 500);
+                    if ($input.val().trim()) {
+                        erpnext_ai_chat.sendMessage();
+                    }
+                }, 300);
             } else if (interimTranscript) {
+                // Show interim results while speaking
                 $input.val(interimTranscript);
             }
         };
@@ -318,9 +321,13 @@ erpnext_ai_chat.addMessage = function(type, content) {
     const messageClass = type === 'user' ? 'user-message' : 'ai-message';
     const alignStyle = type === 'user' ? 'margin-left: auto; background: #2490ef; color: white;' : 'margin-right: auto; background: white;';
     
+    // Check if content contains HTML table
+    const isHtmlContent = content.includes('<table') || content.includes('<div');
+    const contentDisplay = isHtmlContent ? content : `<div style="white-space: pre-wrap;">${frappe.utils.escape_html(content)}</div>`;
+    
     const messageHTML = `
-        <div class="${messageClass}" style="max-width: 80%; padding: 10px 15px; margin-bottom: 10px; border-radius: 10px; ${alignStyle}">
-            <div style="white-space: pre-wrap;">${frappe.utils.escape_html(content)}</div>
+        <div class="${messageClass}" style="max-width: ${isHtmlContent ? '95%' : '80%'}; padding: 10px 15px; margin-bottom: 10px; border-radius: 10px; ${alignStyle}">
+            ${contentDisplay}
             <div style="font-size: 0.75em; opacity: 0.7; margin-top: 5px;">${frappe.datetime.get_time(frappe.datetime.now_datetime())}</div>
         </div>
     `;

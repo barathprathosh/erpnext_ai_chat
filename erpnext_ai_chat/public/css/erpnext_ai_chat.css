@@ -148,3 +148,64 @@
         border-color: #ff0000;
     }
 }
+
+/* HTML Table Styling for AI responses */
+.ai-message .table {
+    background: white;
+    font-size: 0.9em;
+    margin: 10px 0;
+}
+
+.ai-message .table th {
+    background-color: #2490ef;
+    color: white;
+    padding: 8px 12px;
+    font-weight: 600;
+    text-align: left;
+    border-bottom: 2px solid #1a6fc9;
+}
+
+.ai-message .table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.ai-message .table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.ai-message .table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.ai-message .table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.ai-message .sales-orders-summary h4,
+.ai-message .sales-orders-list h4 {
+    margin-bottom: 10px;
+    color: #333;
+    font-size: 1.1em;
+    font-weight: 600;
+}
+
+.ai-message .indicator-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background-color: #e8f5e9;
+    color: #2e7d32;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.ai-message a {
+    color: #2490ef;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.ai-message a:hover {
+    text-decoration: underline;
+}

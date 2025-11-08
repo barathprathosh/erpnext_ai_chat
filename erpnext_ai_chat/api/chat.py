@@ -32,52 +32,97 @@ def send_message(message, session_id=None):
             # Check for chart keywords in user message
             has_chart_keyword = any(keyword in message.lower() for keyword in ['chart', 'graph', 'visualize', 'plot', 'show chart'])
             
-            # Also check if response contains table data (has | characters)
-            has_table = '|' in response_text and response_text.count('|') > 3
-            
-            if has_chart_keyword and has_table:
-                from erpnext_ai_chat.ai_agent.charts import parse_table_to_chart
+            if has_chart_keyword:
+                import json
+                import re
                 
-                # Determine chart type from message
-                chart_type = "bar"  # default
-                if "pie" in message.lower():
-                    chart_type = "pie"
-                elif "donut" in message.lower():
-                    chart_type = "donut"
-                elif "line" in message.lower():
-                    chart_type = "line"
-                elif "percentage" in message.lower():
-                    chart_type = "percentage"
-                elif "mixed" in message.lower() or "combo" in message.lower():
-                    chart_type = "axis-mixed"
+                # First, try to parse if AI returned JSON directly
+                json_match = re.search(r'\{["\']labels["\']\s*:\s*\[.*?\].*?\}', response_text, re.DOTALL)
+                if json_match:
+                    try:
+                        json_str = json_match.group(0)
+                        json_data = json.loads(json_str)
+                        
+                        # Convert to proper format if needed
+                        if "labels" in json_data and ("data" in json_data or "datasets" in json_data):
+                            # Determine chart type from message
+                            chart_type = "bar"  # default
+                            if "pie" in message.lower():
+                                chart_type = "pie"
+                            elif "donut" in message.lower():
+                                chart_type = "donut"
+                            elif "line" in message.lower():
+                                chart_type = "line"
+                            
+                            # Extract title from message context
+                            title = json_data.get("title", "Data Visualization")
+                            if not title or title == "Data Visualization":
+                                if "sales order" in message.lower():
+                                    title = "Sales Orders by Status"
+                                elif "sales" in message.lower():
+                                    title = "Sales Data"
+                                elif "purchase order" in message.lower():
+                                    title = "Purchase Orders"
+                                elif "customer" in message.lower():
+                                    title = "Customer Data"
+                            
+                            # Handle flat data array (convert to datasets format)
+                            if "data" in json_data and "datasets" not in json_data:
+                                chart_data = {
+                                    "type": chart_type,
+                                    "title": title,
+                                    "labels": json_data["labels"],
+                                    "datasets": [{"name": "Count", "values": json_data["data"]}],
+                                    "height": 300,
+                                    "colors": ['#7cd6fd', '#743ee2', '#5e64ff', '#ff5858', '#ffa00a']
+                                }
+                            elif "datasets" in json_data:
+                                chart_data = {
+                                    "type": chart_type,
+                                    "title": title,
+                                    "labels": json_data["labels"],
+                                    "datasets": json_data["datasets"],
+                                    "height": 300,
+                                    "colors": ['#7cd6fd', '#743ee2', '#5e64ff', '#ff5858', '#ffa00a']
+                                }
+                            
+                            frappe.log_error(f"Chart from JSON: {chart_data}", "AI Chat Chart JSON")
+                    except Exception as e:
+                        frappe.log_error(f"Error parsing JSON chart: {str(e)}\n\nJSON: {json_str if 'json_str' in locals() else 'N/A'}", "AI Chat Chart JSON Error")
                 
-                # Extract title from message context
-                title = "Data Visualization"
-                if "sales order" in message.lower():
-                    title = "Sales Orders"
-                elif "sales" in message.lower():
-                    title = "Sales Data"
-                elif "purchase order" in message.lower():
-                    title = "Purchase Orders"
-                elif "purchase" in message.lower():
-                    title = "Purchase Data"
-                elif "customer" in message.lower():
-                    title = "Customer Data"
-                elif "employee" in message.lower():
-                    title = "Employee Data"
-                elif "status" in message.lower():
-                    title = "Status Summary"
-                
-                try:
-                    chart_data = parse_table_to_chart(response_text, chart_type, title)
-                    
-                    # Log for debugging
-                    if chart_data:
-                        frappe.log_error(f"Chart generated successfully: {len(chart_data.get('labels', []))} labels", "AI Chat Chart Success")
-                    else:
-                        frappe.log_error(f"Chart parsing failed for response:\n{response_text[:500]}", "AI Chat Chart Failed")
-                except Exception as e:
-                    frappe.log_error(f"Error generating chart: {str(e)}\n\nResponse:\n{response_text[:500]}", "AI Chat Chart Error")
+                # If no JSON chart data found, try parsing HTML table
+                if not chart_data and '<table' in response_text:
+                    try:
+                        from erpnext_ai_chat.ai_agent.charts import parse_html_table_to_chart
+                        
+                        # Determine chart type from message
+                        chart_type = "bar"  # default
+                        if "pie" in message.lower():
+                            chart_type = "pie"
+                        elif "donut" in message.lower():
+                            chart_type = "donut"
+                        elif "line" in message.lower():
+                            chart_type = "line"
+                        
+                        # Extract title from message context
+                        title = "Data Visualization"
+                        if "sales order" in message.lower():
+                            title = "Sales Orders by Status"
+                        elif "sales" in message.lower():
+                            title = "Sales Data"
+                        elif "purchase order" in message.lower():
+                            title = "Purchase Orders"
+                        elif "customer" in message.lower():
+                            title = "Customer Data"
+                        
+                        chart_data = parse_html_table_to_chart(response_text, chart_type, title)
+                        
+                        if chart_data:
+                            frappe.log_error(f"Chart from HTML table generated: {len(chart_data.get('labels', []))} labels", "AI Chat Chart HTML Success")
+                        else:
+                            frappe.log_error(f"HTML table parsing failed", "AI Chat Chart HTML Failed")
+                    except Exception as e:
+                        frappe.log_error(f"Error generating chart from HTML: {str(e)}", "AI Chat Chart HTML Error")
         
         return {
             "success": response["success"],

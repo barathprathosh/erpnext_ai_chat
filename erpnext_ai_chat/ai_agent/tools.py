@@ -77,14 +77,14 @@ def get_customer_details(customer_id: str) -> str:
 @tool
 def search_items(query: str, limit: int = 10) -> str:
     """
-    Search for items/products by name or item code.
+    Search for items/products by name or item code. Returns REAL data from database in HTML table format.
     
     Args:
         query: Search term for item name or code
         limit: Maximum number of results to return (default: 10)
     
     Returns:
-        List of items matching the search criteria
+        List of ACTUAL items from database matching the search criteria in HTML table format
     """
     try:
         items = frappe.get_all(
@@ -100,14 +100,26 @@ def search_items(query: str, limit: int = 10) -> str:
         )
         
         if not items:
-            return f"No items found matching '{query}'"
+            return f"No items found matching '{query}' in the database."
         
-        result = f"Found {len(items)} item(s):\n\n"
-        for idx, item in enumerate(items, 1):
-            result += f"{idx}. {item.item_name} (Code: {item.item_code})\n"
-            result += f"   Group: {item.item_group}, UOM: {item.stock_uom}\n"
-            if item.standard_rate:
-                result += f"   Rate: {frappe.utils.fmt_money(item.standard_rate, currency='USD')}\n"
+        # Get default currency
+        default_currency = frappe.db.get_single_value("System Settings", "currency") or frappe.defaults.get_global_default("currency") or "INR"
+        
+        # Format as HTML table
+        result = f"<div class='items-list'><h4>Found {len(items)} Item(s) matching '{query}'</h4>"
+        result += "<table class='table table-bordered table-striped' style='width:100%; margin-top:10px;'>"
+        result += "<thead><tr><th>Item Code</th><th>Item Name</th><th>Item Group</th><th>UOM</th><th style='text-align:right;'>Rate</th></tr></thead><tbody>"
+        
+        for item in items:
+            item_link = f"<a href='/app/item/{item.name}' target='_blank'>{frappe.utils.escape_html(item.item_code or item.name)}</a>"
+            item_name = frappe.utils.escape_html(item.item_name or "")
+            item_group = frappe.utils.escape_html(item.item_group or "")
+            uom = frappe.utils.escape_html(item.stock_uom or "")
+            rate = frappe.utils.fmt_money(item.standard_rate or 0, currency=default_currency) if item.standard_rate else "-"
+            
+            result += f"<tr><td>{item_link}</td><td>{item_name}</td><td>{item_group}</td><td>{uom}</td><td style='text-align:right;'>{rate}</td></tr>"
+        
+        result += "</tbody></table></div>"
         
         return result
     except Exception as e:
@@ -117,7 +129,7 @@ def search_items(query: str, limit: int = 10) -> str:
 @tool
 def get_sales_orders(customer: Optional[str] = None, status: Optional[str] = None, limit: int = 10, summary: str = "no") -> str:
     """
-    Get sales orders with optional filters. Returns data in table format.
+    Get sales orders with optional filters. Returns data in HTML table format.
     
     Args:
         customer: Filter by customer name (optional)
@@ -126,20 +138,24 @@ def get_sales_orders(customer: Optional[str] = None, status: Optional[str] = Non
         summary: Set to "by_status" to get summary grouped by status with totals (default: "no")
     
     Returns:
-        List of sales orders in table format, or summary table grouped by status if summary="by_status"
+        List of sales orders in HTML table format, or summary table grouped by status if summary="by_status"
     """
     try:
+        # Get default currency from company
+        default_currency = frappe.db.get_single_value("System Settings", "currency") or frappe.defaults.get_global_default("currency") or "INR"
+        
         # If summary by status requested
         if summary == "by_status":
             query = """
                 SELECT 
                     status,
                     COUNT(*) as count,
-                    SUM(grand_total) as total_amount
+                    SUM(IFNULL(grand_total, 0)) as total_amount,
+                    currency
                 FROM `tabSales Order`
-                WHERE docstatus < 2
+                WHERE docstatus != 2
                 {filters}
-                GROUP BY status
+                GROUP BY status, currency
                 ORDER BY count DESC
             """
             
@@ -157,29 +173,42 @@ def get_sales_orders(customer: Optional[str] = None, status: Optional[str] = Non
             if not results:
                 return "No sales orders found"
             
-            # Format as table
-            result = "Sales Orders by Status:\n\n"
-            result += "Status           | Count | Total Amount\n"
-            result += "-----------------|-------|------------------\n"
+            # Aggregate by status across currencies
+            status_totals = {}
+            for row in results:
+                status_key = row.status or "None"
+                if status_key not in status_totals:
+                    status_totals[status_key] = {"count": 0, "amounts": {}}
+                status_totals[status_key]["count"] += row.count
+                curr = row.currency or default_currency
+                if curr not in status_totals[status_key]["amounts"]:
+                    status_totals[status_key]["amounts"][curr] = 0
+                status_totals[status_key]["amounts"][curr] += (row.total_amount or 0)
+            
+            # Format as HTML table
+            result = "<div class='sales-orders-summary'><h4>Sales Orders by Status</h4>"
+            result += "<table class='table table-bordered table-striped' style='width:100%; margin-top:10px;'>"
+            result += "<thead><tr><th>Status</th><th>Count</th><th>Total Amount</th></tr></thead><tbody>"
             
             total_count = 0
-            total_amount = 0
+            grand_totals = {}
             
-            for row in results:
-                status_name = (row.status or "None")[:16].ljust(16)
-                count = str(row.count).rjust(5)
-                amount = frappe.utils.fmt_money(row.total_amount or 0, currency="USD").rjust(16)
-                result += f"{status_name} | {count} | {amount}\n"
-                total_count += row.count
-                total_amount += (row.total_amount or 0)
+            for status_name, data in sorted(status_totals.items(), key=lambda x: x[1]["count"], reverse=True):
+                total_count += data["count"]
+                amounts_str = ", ".join([f"{frappe.utils.fmt_money(amt, currency=curr)}" for curr, amt in data["amounts"].items()])
+                for curr, amt in data["amounts"].items():
+                    grand_totals[curr] = grand_totals.get(curr, 0) + amt
+                
+                result += f"<tr><td><strong>{status_name}</strong></td><td style='text-align:center;'>{data['count']}</td><td style='text-align:right;'>{amounts_str}</td></tr>"
             
-            result += "-----------------|-------|------------------\n"
-            result += f"{'Total'.ljust(16)} | {str(total_count).rjust(5)} | {frappe.utils.fmt_money(total_amount, currency='USD').rjust(16)}\n"
+            grand_total_str = ", ".join([f"{frappe.utils.fmt_money(amt, currency=curr)}" for curr, amt in grand_totals.items()])
+            result += f"<tr style='font-weight:bold; background-color:#f0f0f0;'><td>Total</td><td style='text-align:center;'>{total_count}</td><td style='text-align:right;'>{grand_total_str}</td></tr>"
+            result += "</tbody></table></div>"
             
             return result
         
         # Otherwise return individual records
-        filters = {}
+        filters = {"docstatus": ["!=", 2]}
         if customer:
             filters["customer"] = ["like", f"%{customer}%"]
         if status:
@@ -188,7 +217,7 @@ def get_sales_orders(customer: Optional[str] = None, status: Optional[str] = Non
         orders = frappe.get_all(
             "Sales Order",
             filters=filters,
-            fields=["name", "customer", "transaction_date", "grand_total", "status", "delivery_status"],
+            fields=["name", "customer", "transaction_date", "grand_total", "status", "currency"],
             order_by="transaction_date desc",
             limit=limit
         )
@@ -196,23 +225,29 @@ def get_sales_orders(customer: Optional[str] = None, status: Optional[str] = Non
         if not orders:
             return "No sales orders found matching the criteria"
         
-        # Calculate total
-        total_amount = sum(order.grand_total for order in orders)
+        # Calculate total by currency
+        currency_totals = {}
+        for order in orders:
+            curr = order.currency or default_currency
+            currency_totals[curr] = currency_totals.get(curr, 0) + (order.grand_total or 0)
         
-        result = f"Sales Orders ({len(orders)} records):\n\n"
-        result += "Order ID         | Customer              | Date       | Status        | Amount\n"
-        result += "-----------------|----------------------|------------|---------------|------------------\n"
+        # Format as HTML table
+        result = f"<div class='sales-orders-list'><h4>Sales Orders ({len(orders)} records)</h4>"
+        result += "<table class='table table-bordered table-striped' style='width:100%; margin-top:10px;'>"
+        result += "<thead><tr><th>Order ID</th><th>Customer</th><th>Date</th><th>Status</th><th style='text-align:right;'>Amount</th></tr></thead><tbody>"
         
         for order in orders:
-            order_id = (order.name or "")[:16].ljust(16)
-            cust = (order.customer or "")[:20].ljust(20)
-            date = str(order.transaction_date or "")[:10].ljust(10)
-            stat = (order.status or "")[:13].ljust(13)
-            amt = frappe.utils.fmt_money(order.grand_total, currency="USD").rjust(16)
-            result += f"{order_id} | {cust} | {date} | {stat} | {amt}\n"
+            order_link = f"<a href='/app/sales-order/{order.name}' target='_blank'>{order.name}</a>"
+            cust = frappe.utils.escape_html(order.customer or "")
+            date = str(order.transaction_date or "")
+            stat = frappe.utils.escape_html(order.status or "")
+            curr = order.currency or default_currency
+            amt = frappe.utils.fmt_money(order.grand_total or 0, currency=curr)
+            result += f"<tr><td>{order_link}</td><td>{cust}</td><td>{date}</td><td><span class='indicator-pill'>{stat}</span></td><td style='text-align:right;'>{amt}</td></tr>"
         
-        result += "-----------------|----------------------|------------|---------------|------------------\n"
-        result += f"{'Total:'.ljust(70)} | {frappe.utils.fmt_money(total_amount, currency='USD').rjust(16)}\n"
+        total_str = ", ".join([f"{frappe.utils.fmt_money(amt, currency=curr)}" for curr, amt in currency_totals.items()])
+        result += f"<tr style='font-weight:bold; background-color:#f0f0f0;'><td colspan='4'>Total</td><td style='text-align:right;'>{total_str}</td></tr>"
+        result += "</tbody></table></div>"
         
         return result
     except Exception as e:
@@ -266,21 +301,21 @@ def get_purchase_orders(supplier: Optional[str] = None, status: Optional[str] = 
 @tool
 def get_stock_balance(item_code: str, warehouse: Optional[str] = None) -> str:
     """
-    Get stock balance for an item.
+    Get REAL stock balance for an item from database. Returns actual warehouse data in HTML table format.
     
     Args:
         item_code: Item code to check stock for
         warehouse: Specific warehouse to check (optional, shows all warehouses if not specified)
     
     Returns:
-        Stock balance information
+        ACTUAL stock balance information from database
     """
     try:
-        from erpnext.stock.utils import get_stock_balance
+        from erpnext.stock.utils import get_stock_balance as get_stock_bal
         
         if warehouse:
-            balance = get_stock_balance(item_code, warehouse)
-            return f"Stock balance for {item_code} in {warehouse}: {balance}"
+            balance = get_stock_bal(item_code, warehouse)
+            return f"<div><strong>Stock balance for {frappe.utils.escape_html(item_code)} in {frappe.utils.escape_html(warehouse)}:</strong> {balance} units</div>"
         else:
             bins = frappe.get_all(
                 "Bin",
@@ -289,14 +324,31 @@ def get_stock_balance(item_code: str, warehouse: Optional[str] = None) -> str:
             )
             
             if not bins:
-                return f"No stock found for item: {item_code}"
+                return f"No stock found for item: {frappe.utils.escape_html(item_code)} in the database."
             
-            result = f"Stock balance for {item_code}:\n\n"
+            # Format as HTML table
+            result = f"<div class='stock-balance'><h4>Stock Balance for {frappe.utils.escape_html(item_code)}</h4>"
+            result += "<table class='table table-bordered table-striped' style='width:100%; margin-top:10px;'>"
+            result += "<thead><tr><th>Warehouse</th><th style='text-align:right;'>Actual Qty</th><th style='text-align:right;'>Reserved Qty</th><th style='text-align:right;'>Available Qty</th></tr></thead><tbody>"
+            
+            total_actual = 0
+            total_reserved = 0
+            total_available = 0
+            
             for bin_data in bins:
-                result += f"Warehouse: {bin_data.warehouse}\n"
-                result += f"  Actual Qty: {bin_data.actual_qty}\n"
-                result += f"  Reserved Qty: {bin_data.reserved_qty}\n"
-                result += f"  Available Qty: {bin_data.projected_qty}\n\n"
+                wh = frappe.utils.escape_html(bin_data.warehouse or "")
+                actual = bin_data.actual_qty or 0
+                reserved = bin_data.reserved_qty or 0
+                available = bin_data.projected_qty or 0
+                
+                total_actual += actual
+                total_reserved += reserved
+                total_available += available
+                
+                result += f"<tr><td>{wh}</td><td style='text-align:right;'>{actual}</td><td style='text-align:right;'>{reserved}</td><td style='text-align:right;'>{available}</td></tr>"
+            
+            result += f"<tr style='font-weight:bold; background-color:#f0f0f0;'><td>Total</td><td style='text-align:right;'>{total_actual}</td><td style='text-align:right;'>{total_reserved}</td><td style='text-align:right;'>{total_available}</td></tr>"
+            result += "</tbody></table></div>"
             
             return result
     except Exception as e:

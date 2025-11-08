@@ -53,6 +53,147 @@ def generate_chart_data(
     return chart_data
 
 
+def parse_html_table_to_chart(
+    html_text: str,
+    chart_type: str = "bar",
+    title: str = "Data Chart"
+) -> Optional[Dict[str, Any]]:
+    """
+    Parse an HTML table and convert to chart data.
+    
+    Args:
+        html_text: HTML text containing table
+        chart_type: Type of chart to generate
+        title: Chart title
+    
+    Returns:
+        Chart data dictionary or None if parsing fails
+    """
+    try:
+        import re
+        from html.parser import HTMLParser
+        
+        # Simple HTML table parser
+        class TableParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.in_table = False
+                self.in_thead = False
+                self.in_tbody = False
+                self.in_tr = False
+                self.in_th = False
+                self.in_td = False
+                self.headers = []
+                self.current_row = []
+                self.data_rows = []
+                self.current_text = ""
+                
+            def handle_starttag(self, tag, attrs):
+                if tag == "table":
+                    self.in_table = True
+                elif tag == "thead":
+                    self.in_thead = True
+                elif tag == "tbody":
+                    self.in_tbody = True
+                elif tag == "tr":
+                    self.in_tr = True
+                    self.current_row = []
+                elif tag == "th":
+                    self.in_th = True
+                    self.current_text = ""
+                elif tag == "td":
+                    self.in_td = True
+                    self.current_text = ""
+                    
+            def handle_endtag(self, tag):
+                if tag == "table":
+                    self.in_table = False
+                elif tag == "thead":
+                    self.in_thead = False
+                elif tag == "tbody":
+                    self.in_tbody = False
+                elif tag == "tr":
+                    self.in_tr = False
+                    if self.in_thead and self.current_row:
+                        self.headers = self.current_row
+                    elif self.in_tbody and self.current_row:
+                        # Skip total/summary rows
+                        if self.current_row and not str(self.current_row[0]).lower().startswith('total'):
+                            self.data_rows.append(self.current_row)
+                elif tag == "th":
+                    self.in_th = False
+                    if self.current_text:
+                        self.current_row.append(self.current_text.strip())
+                elif tag == "td":
+                    self.in_td = False
+                    if self.current_text:
+                        self.current_row.append(self.current_text.strip())
+                        
+            def handle_data(self, data):
+                if self.in_th or self.in_td:
+                    self.current_text += data
+        
+        parser = TableParser()
+        parser.feed(html_text)
+        
+        if not parser.headers or not parser.data_rows:
+            return None
+        
+        # Build chart data from parsed table
+        labels = []
+        datasets = {}
+        
+        for row in parser.data_rows:
+            if len(row) < 2:
+                continue
+                
+            # First column is label
+            label = row[0]
+            labels.append(label)
+            
+            # Rest are numeric values
+            for i in range(1, min(len(row), len(parser.headers))):
+                header = parser.headers[i]
+                
+                if header not in datasets:
+                    datasets[header] = {"name": header, "values": []}
+                
+                # Try to parse numeric value
+                try:
+                    value_str = row[i]
+                    # Remove currency symbols, commas, and whitespace
+                    value_str = re.sub(r'[^\d.-]', '', value_str)
+                    
+                    if value_str:
+                        value = float(value_str)
+                        datasets[header]["values"].append(value)
+                    else:
+                        datasets[header]["values"].append(0)
+                except Exception:
+                    datasets[header]["values"].append(0)
+        
+        if not labels or not datasets:
+            return None
+        
+        # Convert datasets dict to list
+        dataset_list = list(datasets.values())
+        
+        # For pie/donut charts, use only first dataset
+        if chart_type in ["pie", "donut"] and dataset_list:
+            dataset_list = [dataset_list[0]]
+        
+        return generate_chart_data(
+            chart_type=chart_type,
+            title=title,
+            labels=labels,
+            datasets=dataset_list
+        )
+        
+    except Exception as e:
+        frappe.log_error(f"Error parsing HTML table to chart: {str(e)}\n\nHTML:\n{html_text[:500]}", "AI Chat HTML Chart")
+        return None
+
+
 def parse_table_to_chart(
     table_text: str,
     chart_type: str = "bar",
