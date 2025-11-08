@@ -291,6 +291,374 @@ def search_doctype(doctype: str, query: str, limit: int = 10) -> str:
         return f"Error searching {doctype}: {str(e)}"
 
 
+@tool
+def get_all_modules() -> str:
+    """
+    Get list of all available modules in ERPNext/Frappe.
+    
+    Returns:
+        List of all modules with their doctypes
+    """
+    try:
+        modules = frappe.get_all("Module Def", 
+                                fields=["name", "module_name", "app_name"],
+                                order_by="app_name, module_name")
+        
+        if not modules:
+            return "No modules found"
+        
+        result = "Available Modules:\n\n"
+        current_app = None
+        
+        for module in modules:
+            if current_app != module.app_name:
+                current_app = module.app_name
+                result += f"\n📦 {current_app.upper()}\n"
+                result += "=" * 50 + "\n"
+            
+            result += f"  • {module.module_name}\n"
+        
+        result += f"\nTotal: {len(modules)} modules\n"
+        return result
+    except Exception as e:
+        return f"Error fetching modules: {str(e)}"
+
+
+@tool
+def get_doctypes_in_module(module_name: str) -> str:
+    """
+    Get all doctypes in a specific module.
+    
+    Args:
+        module_name: Name of the module
+    
+    Returns:
+        List of doctypes in the module
+    """
+    try:
+        doctypes = frappe.get_all("DocType",
+                                 filters={"module": module_name, "istable": 0},
+                                 fields=["name", "is_submittable", "is_tree"],
+                                 order_by="name")
+        
+        if not doctypes:
+            return f"No doctypes found in module '{module_name}'"
+        
+        result = f"DocTypes in '{module_name}' module:\n\n"
+        
+        for dt in doctypes:
+            flags = []
+            if dt.is_submittable:
+                flags.append("Submittable")
+            if dt.is_tree:
+                flags.append("Tree")
+            
+            flag_str = f" [{', '.join(flags)}]" if flags else ""
+            result += f"  • {dt.name}{flag_str}\n"
+        
+        result += f"\nTotal: {len(doctypes)} doctypes\n"
+        return result
+    except Exception as e:
+        return f"Error fetching doctypes: {str(e)}"
+
+
+@tool
+def query_doctype(doctype_name: str, filters: Optional[str] = None, fields: Optional[str] = None, limit: int = 10) -> str:
+    """
+    Query any doctype with filters and field selection.
+    
+    Args:
+        doctype_name: Name of the doctype to query
+        filters: Optional filter string in format: "field=value,field2=value2"
+        fields: Optional comma-separated fields to return
+        limit: Maximum number of results (default: 10)
+    
+    Returns:
+        Query results from the doctype
+    """
+    try:
+        # Check permission
+        if not frappe.has_permission(doctype_name, "read"):
+            return f"You don't have permission to access {doctype_name}"
+        
+        # Parse filters
+        filter_dict = {}
+        if filters:
+            for f in filters.split(","):
+                if "=" in f:
+                    key, val = f.strip().split("=", 1)
+                    filter_dict[key.strip()] = val.strip()
+        
+        # Parse fields
+        field_list = ["name"]
+        if fields:
+            field_list = [f.strip() for f in fields.split(",")]
+            if "name" not in field_list:
+                field_list.insert(0, "name")
+        else:
+            # Get default fields from meta
+            meta = frappe.get_meta(doctype_name)
+            if meta.title_field and meta.title_field not in field_list:
+                field_list.append(meta.title_field)
+            
+            # Add first 5 fields that are not in table
+            for df in meta.fields[:10]:
+                if df.fieldtype not in ["Table", "Table MultiSelect", "HTML", "Text Editor", "Code"] and \
+                   df.fieldname not in field_list and len(field_list) < 6:
+                    field_list.append(df.fieldname)
+        
+        # Execute query
+        docs = frappe.get_all(doctype_name,
+                             filters=filter_dict if filter_dict else None,
+                             fields=field_list,
+                             limit=limit,
+                             order_by="modified desc")
+        
+        if not docs:
+            filter_str = f" with filters {filter_dict}" if filter_dict else ""
+            return f"No records found in {doctype_name}{filter_str}"
+        
+        result = f"Found {len(docs)} record(s) in {doctype_name}:\n\n"
+        
+        for idx, doc in enumerate(docs, 1):
+            result += f"{idx}. {doc.name}\n"
+            for field in field_list[1:]:  # Skip 'name' as it's already shown
+                if field in doc and doc[field]:
+                    value = doc[field]
+                    # Format value
+                    if isinstance(value, (int, float)):
+                        if field in ["grand_total", "total", "amount", "outstanding_amount"]:
+                            value = frappe.utils.fmt_money(value, currency="USD")
+                    result += f"   {field}: {value}\n"
+            result += "\n"
+        
+        return result
+    except Exception as e:
+        return f"Error querying {doctype_name}: {str(e)}"
+
+
+@tool
+def get_reports_list(module_name: Optional[str] = None) -> str:
+    """
+    Get list of available reports, optionally filtered by module.
+    
+    Args:
+        module_name: Optional module name to filter reports
+    
+    Returns:
+        List of available reports
+    """
+    try:
+        filters = {}
+        if module_name:
+            filters["module"] = module_name
+        
+        reports = frappe.get_all("Report",
+                                filters=filters,
+                                fields=["name", "ref_doctype", "report_type", "module"],
+                                order_by="module, name")
+        
+        if not reports:
+            filter_str = f" in module '{module_name}'" if module_name else ""
+            return f"No reports found{filter_str}"
+        
+        result = "Available Reports:\n\n"
+        current_module = None
+        
+        for report in reports:
+            if current_module != report.module:
+                current_module = report.module
+                result += f"\n📊 {current_module}\n"
+                result += "-" * 50 + "\n"
+            
+            result += f"  • {report.name}"
+            if report.ref_doctype:
+                result += f" (Based on: {report.ref_doctype})"
+            result += f" [{report.report_type}]\n"
+        
+        result += f"\nTotal: {len(reports)} reports\n"
+        return result
+    except Exception as e:
+        return f"Error fetching reports: {str(e)}"
+
+
+@tool
+def get_doctype_structure(doctype_name: str) -> str:
+    """
+    Get the structure/schema of a doctype including all fields.
+    
+    Args:
+        doctype_name: Name of the doctype
+    
+    Returns:
+        Structure information including fields, links, and properties
+    """
+    try:
+        if not frappe.db.exists("DocType", doctype_name):
+            return f"DocType '{doctype_name}' does not exist"
+        
+        meta = frappe.get_meta(doctype_name)
+        
+        result = f"DocType Structure: {doctype_name}\n"
+        result += "=" * 60 + "\n\n"
+        
+        result += f"Module: {meta.module}\n"
+        result += f"Is Submittable: {'Yes' if meta.is_submittable else 'No'}\n"
+        result += f"Is Tree: {'Yes' if meta.is_tree else 'No'}\n"
+        result += f"Track Changes: {'Yes' if meta.track_changes else 'No'}\n"
+        result += f"Allow Rename: {'Yes' if meta.allow_rename else 'No'}\n\n"
+        
+        # Fields
+        result += "FIELDS:\n"
+        result += "-" * 60 + "\n"
+        
+        for field in meta.fields:
+            if field.fieldtype not in ["Section Break", "Column Break", "HTML"]:
+                mandatory = " *" if field.reqd else ""
+                unique = " [Unique]" if field.unique else ""
+                result += f"  • {field.label or field.fieldname}{mandatory}{unique}\n"
+                result += f"    Type: {field.fieldtype}"
+                if field.options:
+                    result += f", Options: {field.options}"
+                result += "\n"
+        
+        result += f"\nTotal Fields: {len([f for f in meta.fields if f.fieldtype not in ['Section Break', 'Column Break', 'HTML']])}\n"
+        
+        return result
+    except Exception as e:
+        return f"Error fetching doctype structure: {str(e)}"
+
+
+@tool
+def search_across_doctypes(search_term: str, doctype_list: Optional[str] = None, limit: int = 5) -> str:
+    """
+    Search for a term across multiple doctypes.
+    
+    Args:
+        search_term: The term to search for
+        doctype_list: Optional comma-separated list of doctypes to search in
+        limit: Maximum results per doctype (default: 5)
+    
+    Returns:
+        Search results from multiple doctypes
+    """
+    try:
+        # Default doctypes to search
+        default_doctypes = [
+            "Customer", "Supplier", "Item", "Sales Order", "Purchase Order",
+            "Sales Invoice", "Purchase Invoice", "Quotation", "Lead",
+            "Opportunity", "Project", "Task", "Issue", "Employee"
+        ]
+        
+        if doctype_list:
+            doctypes_to_search = [dt.strip() for dt in doctype_list.split(",")]
+        else:
+            doctypes_to_search = default_doctypes
+        
+        result = f"Searching for '{search_term}' across doctypes:\n\n"
+        total_results = 0
+        
+        for doctype in doctypes_to_search:
+            try:
+                if not frappe.has_permission(doctype, "read"):
+                    continue
+                
+                meta = frappe.get_meta(doctype)
+                
+                # Build search filters
+                search_fields = []
+                if meta.search_fields:
+                    search_fields = [f.strip() for f in meta.search_fields.split(",")]
+                if meta.title_field and meta.title_field not in search_fields:
+                    search_fields.append(meta.title_field)
+                if not search_fields:
+                    search_fields = ["name"]
+                
+                # Search
+                or_filters = []
+                for field in search_fields[:3]:  # Limit to first 3 search fields
+                    or_filters.append([field, "like", f"%{search_term}%"])
+                
+                if or_filters:
+                    docs = frappe.get_all(doctype,
+                                         or_filters=or_filters,
+                                         fields=["name"] + search_fields[:2],
+                                         limit=limit)
+                    
+                    if docs:
+                        result += f"📄 {doctype} ({len(docs)} found):\n"
+                        for doc in docs:
+                            result += f"   • {doc.name}\n"
+                            for field in search_fields[:2]:
+                                if field in doc and field != "name" and doc[field]:
+                                    result += f"     {field}: {doc[field]}\n"
+                        result += "\n"
+                        total_results += len(docs)
+            
+            except Exception as e:
+                continue
+        
+        if total_results == 0:
+            result += f"No results found for '{search_term}'\n"
+        else:
+            result += f"Total results: {total_results}\n"
+        
+        return result
+    except Exception as e:
+        return f"Error searching: {str(e)}"
+
+
+@tool
+def get_doctype_count(doctype_name: str, filters: Optional[str] = None) -> str:
+    """
+    Get count of documents in a doctype with optional filters.
+    
+    Args:
+        doctype_name: Name of the doctype
+        filters: Optional filter string in format: "field=value,field2=value2"
+    
+    Returns:
+        Count of documents
+    """
+    try:
+        if not frappe.has_permission(doctype_name, "read"):
+            return f"You don't have permission to access {doctype_name}"
+        
+        # Parse filters
+        filter_dict = {}
+        if filters:
+            for f in filters.split(","):
+                if "=" in f:
+                    key, val = f.strip().split("=", 1)
+                    filter_dict[key.strip()] = val.strip()
+        
+        count = frappe.db.count(doctype_name, filters=filter_dict if filter_dict else None)
+        
+        filter_str = f" with filters {filter_dict}" if filter_dict else ""
+        result = f"Count of {doctype_name}{filter_str}: {count:,} record(s)\n"
+        
+        # Get some stats if possible
+        if not filters:
+            try:
+                # Try to get status breakdown if status field exists
+                meta = frappe.get_meta(doctype_name)
+                if any(f.fieldname == "status" for f in meta.fields):
+                    status_counts = frappe.get_all(doctype_name,
+                                                   fields=["status", "count(*) as count"],
+                                                   group_by="status",
+                                                   order_by="count desc")
+                    if status_counts:
+                        result += "\nBreakdown by Status:\n"
+                        for stat in status_counts:
+                            result += f"  • {stat.status or 'None'}: {stat.count:,}\n"
+            except:
+                pass
+        
+        return result
+    except Exception as e:
+        return f"Error counting {doctype_name}: {str(e)}"
+
+
 def get_erpnext_tools(user=None):
     """
     Get all available tools for the ERPNext agent.
@@ -302,11 +670,21 @@ def get_erpnext_tools(user=None):
         List of LangChain tools
     """
     return [
+        # Original tools
         search_customers,
         get_customer_details,
         search_items,
         get_sales_orders,
         get_purchase_orders,
         get_stock_balance,
-        search_doctype
+        search_doctype,
+        
+        # New comprehensive tools
+        get_all_modules,
+        get_doctypes_in_module,
+        query_doctype,
+        get_reports_list,
+        get_doctype_structure,
+        search_across_doctypes,
+        get_doctype_count
     ]
