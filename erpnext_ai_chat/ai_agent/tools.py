@@ -114,19 +114,70 @@ def search_items(query: str, limit: int = 10) -> str:
 
 
 @tool
-def get_sales_orders(customer: Optional[str] = None, status: Optional[str] = None, limit: int = 10) -> str:
+def get_sales_orders(customer: Optional[str] = None, status: Optional[str] = None, limit: int = 10, summary: str = "no") -> str:
     """
-    Get sales orders with optional filters.
+    Get sales orders with optional filters. Returns data in table format.
     
     Args:
         customer: Filter by customer name (optional)
         status: Filter by order status like 'Draft', 'To Deliver', 'Completed' (optional)
         limit: Maximum number of results to return (default: 10)
+        summary: Set to "by_status" to get summary grouped by status with totals (default: "no")
     
     Returns:
-        List of sales orders
+        List of sales orders in table format, or summary table grouped by status if summary="by_status"
     """
     try:
+        # If summary by status requested
+        if summary == "by_status":
+            query = """
+                SELECT 
+                    status,
+                    COUNT(*) as count,
+                    SUM(grand_total) as total_amount
+                FROM `tabSales Order`
+                WHERE docstatus < 2
+                {filters}
+                GROUP BY status
+                ORDER BY count DESC
+            """
+            
+            filter_conditions = []
+            if status:
+                filter_conditions.append(f"AND status = '{frappe.db.escape(status)}'")
+            if customer:
+                filter_conditions.append(f"AND customer LIKE '%{frappe.db.escape(customer)}%'")
+            
+            filter_str = " ".join(filter_conditions) if filter_conditions else ""
+            query = query.format(filters=filter_str)
+            
+            results = frappe.db.sql(query, as_dict=True)
+            
+            if not results:
+                return "No sales orders found"
+            
+            # Format as table
+            result = "Sales Orders by Status:\n\n"
+            result += "Status           | Count | Total Amount\n"
+            result += "-----------------|-------|------------------\n"
+            
+            total_count = 0
+            total_amount = 0
+            
+            for row in results:
+                status_name = (row.status or "None")[:16].ljust(16)
+                count = str(row.count).rjust(5)
+                amount = frappe.utils.fmt_money(row.total_amount or 0, currency="USD").rjust(16)
+                result += f"{status_name} | {count} | {amount}\n"
+                total_count += row.count
+                total_amount += (row.total_amount or 0)
+            
+            result += "-----------------|-------|------------------\n"
+            result += f"{'Total'.ljust(16)} | {str(total_count).rjust(5)} | {frappe.utils.fmt_money(total_amount, currency='USD').rjust(16)}\n"
+            
+            return result
+        
+        # Otherwise return individual records
         filters = {}
         if customer:
             filters["customer"] = ["like", f"%{customer}%"]
@@ -144,13 +195,23 @@ def get_sales_orders(customer: Optional[str] = None, status: Optional[str] = Non
         if not orders:
             return "No sales orders found matching the criteria"
         
-        result = f"Found {len(orders)} sales order(s):\n\n"
-        for idx, order in enumerate(orders, 1):
-            result += f"{idx}. SO: {order.name}\n"
-            result += f"   Customer: {order.customer}\n"
-            result += f"   Date: {order.transaction_date}\n"
-            result += f"   Amount: {frappe.utils.fmt_money(order.grand_total, currency='USD')}\n"
-            result += f"   Status: {order.status}\n\n"
+        # Calculate total
+        total_amount = sum(order.grand_total for order in orders)
+        
+        result = f"Sales Orders ({len(orders)} records):\n\n"
+        result += "Order ID         | Customer              | Date       | Status        | Amount\n"
+        result += "-----------------|----------------------|------------|---------------|------------------\n"
+        
+        for order in orders:
+            order_id = (order.name or "")[:16].ljust(16)
+            cust = (order.customer or "")[:20].ljust(20)
+            date = str(order.transaction_date or "")[:10].ljust(10)
+            stat = (order.status or "")[:13].ljust(13)
+            amt = frappe.utils.fmt_money(order.grand_total, currency="USD").rjust(16)
+            result += f"{order_id} | {cust} | {date} | {stat} | {amt}\n"
+        
+        result += "-----------------|----------------------|------------|---------------|------------------\n"
+        result += f"{'Total:'.ljust(70)} | {frappe.utils.fmt_money(total_amount, currency='USD').rjust(16)}\n"
         
         return result
     except Exception as e:
