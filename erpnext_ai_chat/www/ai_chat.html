@@ -305,9 +305,9 @@ function initAIChatApp() {
                     
                     <div v-for="(msg, index) in messages" :key="index" 
                          :class="['message', msg.type === 'user' ? 'user-message' : 'ai-message']">
-                        <div class="message-content">{{ msg.content }}</div>
+                        <div class="message-content" v-text="msg.content"></div>
                         <div v-if="msg.chartData" :id="'chart-' + (index + 1)" class="chart-container"></div>
-                        <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
+                        <div class="message-time" v-text="formatTime(msg.timestamp)"></div>
                     </div>
                     
                     <div v-if="isLoading" class="typing-indicator">
