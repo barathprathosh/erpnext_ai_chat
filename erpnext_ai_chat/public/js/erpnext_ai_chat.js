@@ -1,9 +1,14 @@
 frappe.provide('erpnext_ai_chat');
 
+// Voice recognition setup
+erpnext_ai_chat.recognition = null;
+erpnext_ai_chat.isListening = false;
+
 $(document).ready(function() {
     // Add AI Chat button to navbar
     if (frappe.boot.user && frappe.boot.user.name !== 'Guest') {
         addAIChatButton();
+        initVoiceRecognition();
     }
 });
 
@@ -24,6 +29,76 @@ function addAIChatButton() {
             $(chatButton).attr('id', 'ai-chat-button').appendTo('.navbar .navbar-nav');
         }
     }, 1000);
+}
+
+function initVoiceRecognition() {
+    // Check if browser supports speech recognition
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        erpnext_ai_chat.recognition = new SpeechRecognition();
+        
+        erpnext_ai_chat.recognition.continuous = false;
+        erpnext_ai_chat.recognition.interimResults = true;
+        erpnext_ai_chat.recognition.lang = 'en-US';
+        
+        erpnext_ai_chat.recognition.onstart = function() {
+            erpnext_ai_chat.isListening = true;
+            console.log('Voice recognition started');
+        };
+        
+        erpnext_ai_chat.recognition.onend = function() {
+            erpnext_ai_chat.isListening = false;
+            console.log('Voice recognition ended');
+        };
+        
+        erpnext_ai_chat.recognition.onerror = function(event) {
+            console.error('Voice recognition error:', event.error);
+            erpnext_ai_chat.isListening = false;
+            
+            const $wrapper = erpnext_ai_chat.chatDialog.fields_dict.chat_container.$wrapper;
+            const $voiceBtn = $wrapper.find('.ai-chat-voice');
+            $voiceBtn.removeClass('listening');
+            $voiceBtn.find('.voice-status').text('🎤');
+            
+            if (event.error === 'no-speech') {
+                frappe.show_alert({message: __('No speech detected. Please try again.'), indicator: 'orange'});
+            } else if (event.error === 'not-allowed') {
+                frappe.show_alert({message: __('Microphone access denied. Please enable it in browser settings.'), indicator: 'red'});
+            } else {
+                frappe.show_alert({message: __('Voice recognition error: ' + event.error), indicator: 'red'});
+            }
+        };
+        
+        erpnext_ai_chat.recognition.onresult = function(event) {
+            let interimTranscript = '';
+            let finalTranscript = '';
+            
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+            
+            // Update input field with transcript
+            const $wrapper = erpnext_ai_chat.chatDialog.fields_dict.chat_container.$wrapper;
+            const $input = $wrapper.find('.ai-chat-input');
+            
+            if (finalTranscript) {
+                $input.val(finalTranscript);
+                // Automatically send the message
+                setTimeout(() => {
+                    erpnext_ai_chat.sendMessage();
+                }, 500);
+            } else if (interimTranscript) {
+                $input.val(interimTranscript);
+            }
+        };
+    } else {
+        console.warn('Speech recognition not supported in this browser');
+    }
 }
 
 erpnext_ai_chat.openChat = function() {
@@ -51,6 +126,13 @@ erpnext_ai_chat.openChat = function() {
 };
 
 erpnext_ai_chat.initChat = function() {
+    const voiceSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+    const voiceButton = voiceSupported ? `
+        <button class="btn btn-default ai-chat-voice" title="Voice Input (Click and speak)">
+            <span class="voice-status">🎤</span>
+        </button>
+    ` : '';
+    
     const chatHTML = `
         <div class="ai-chat-wrapper" style="height: 500px; display: flex; flex-direction: column;">
             <div class="ai-chat-messages" style="flex: 1; overflow-y: auto; padding: 15px; background: #f7f7f7; border-radius: 5px; margin-bottom: 15px;">
@@ -63,10 +145,12 @@ erpnext_ai_chat.initChat = function() {
                         <li>📦 "What's the stock balance for item ABC?"</li>
                         <li>📊 "Show recent purchase orders"</li>
                     </ul>
+                    ${voiceSupported ? '<p style="margin-top: 15px;">🎤 <strong>Try voice input!</strong> Click the microphone and speak your query.</p>' : ''}
                 </div>
             </div>
             <div class="ai-chat-input-wrapper" style="display: flex; gap: 10px;">
-                <input type="text" class="form-control ai-chat-input" placeholder="Type your message..." style="flex: 1;">
+                <input type="text" class="form-control ai-chat-input" placeholder="Type or use voice..." style="flex: 1;">
+                ${voiceButton}
                 <button class="btn btn-primary ai-chat-send">
                     <svg class="icon icon-sm">
                         <use href="#icon-arrow-right"></use>
@@ -74,9 +158,12 @@ erpnext_ai_chat.initChat = function() {
                     Send
                 </button>
             </div>
-            <div class="ai-chat-actions" style="margin-top: 10px; display: flex; gap: 10px;">
+            <div class="ai-chat-actions" style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
                 <button class="btn btn-sm btn-default ai-chat-new-session">New Chat</button>
                 <button class="btn btn-sm btn-default ai-chat-clear">Clear History</button>
+                <span class="voice-hint" style="font-size: 0.85em; color: #888; margin-left: auto;">
+                    ${voiceSupported ? 'Press Ctrl+Shift+V for voice' : ''}
+                </span>
             </div>
         </div>
     `;
@@ -101,6 +188,11 @@ erpnext_ai_chat.setupEventHandlers = function() {
         }
     });
     
+    // Voice input button
+    $wrapper.find('.ai-chat-voice').on('click', function() {
+        erpnext_ai_chat.toggleVoiceInput();
+    });
+    
     $wrapper.find('.ai-chat-new-session').on('click', function() {
         erpnext_ai_chat.createNewSession();
     });
@@ -108,6 +200,53 @@ erpnext_ai_chat.setupEventHandlers = function() {
     $wrapper.find('.ai-chat-clear').on('click', function() {
         erpnext_ai_chat.clearHistory();
     });
+    
+    // Keyboard shortcut for voice input (Ctrl+Shift+V)
+    $(document).on('keydown.voice-input', function(e) {
+        if (e.ctrlKey && e.shiftKey && e.which === 86) { // Ctrl+Shift+V
+            e.preventDefault();
+            if (erpnext_ai_chat.chatDialog && erpnext_ai_chat.chatDialog.is_visible) {
+                erpnext_ai_chat.toggleVoiceInput();
+            }
+        }
+    });
+};
+
+erpnext_ai_chat.toggleVoiceInput = function() {
+    if (!erpnext_ai_chat.recognition) {
+        frappe.show_alert({message: __('Voice recognition not supported in your browser'), indicator: 'red'});
+        return;
+    }
+    
+    const $wrapper = erpnext_ai_chat.chatDialog.fields_dict.chat_container.$wrapper;
+    const $voiceBtn = $wrapper.find('.ai-chat-voice');
+    const $input = $wrapper.find('.ai-chat-input');
+    
+    if (erpnext_ai_chat.isListening) {
+        // Stop listening
+        erpnext_ai_chat.recognition.stop();
+        $voiceBtn.removeClass('listening');
+        $voiceBtn.find('.voice-status').text('🎤');
+    } else {
+        // Start listening
+        try {
+            $input.val(''); // Clear input
+            erpnext_ai_chat.recognition.start();
+            $voiceBtn.addClass('listening');
+            $voiceBtn.find('.voice-status').text('🔴');
+            
+            frappe.show_alert({
+                message: __('Listening... Speak now!'),
+                indicator: 'blue'
+            });
+        } catch (error) {
+            console.error('Error starting voice recognition:', error);
+            frappe.show_alert({
+                message: __('Error starting voice input: ' + error.message),
+                indicator: 'red'
+            });
+        }
+    }
 };
 
 erpnext_ai_chat.sendMessage = function() {

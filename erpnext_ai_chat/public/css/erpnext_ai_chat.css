@@ -51,3 +51,68 @@
     margin: 5px 0;
     color: #666;
 }
+
+/* Voice Input Styling */
+.ai-chat-voice {
+    padding: 8px 16px;
+    font-size: 1.2em;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.ai-chat-voice:hover {
+    background-color: #f0f0f0;
+    border-color: #ddd;
+}
+
+.ai-chat-voice.listening {
+    background-color: #fee;
+    border-color: #f00;
+    animation: pulse 1.5s infinite;
+}
+
+.ai-chat-voice.listening .voice-status {
+    animation: pulse-icon 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
+    }
+}
+
+@keyframes pulse-icon {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+.voice-status {
+    display: inline-block;
+    transition: transform 0.2s;
+}
+
+.voice-hint {
+    user-select: none;
+}
+
+/* Listening state visual feedback */
+.ai-chat-input.listening {
+    border-color: #f00;
+    animation: input-pulse 1.5s infinite;
+}
+
+@keyframes input-pulse {
+    0%, 100% {
+        border-color: #ced4da;
+    }
+    50% {
+        border-color: #ff0000;
+    }
+}
