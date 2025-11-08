@@ -26,36 +26,58 @@ def send_message(message, session_id=None):
         
         # Check if user requested a chart visualization
         chart_data = None
-        if response["success"] and any(keyword in message.lower() for keyword in ['chart', 'graph', 'visualize', 'plot', 'show chart']):
-            from erpnext_ai_chat.ai_agent.charts import parse_table_to_chart
-            
+        if response["success"]:
             response_text = response["message"]
             
-            # Determine chart type from message
-            chart_type = "bar"  # default
-            if "pie" in message.lower():
-                chart_type = "pie"
-            elif "donut" in message.lower():
-                chart_type = "donut"
-            elif "line" in message.lower():
-                chart_type = "line"
-            elif "percentage" in message.lower():
-                chart_type = "percentage"
+            # Check for chart keywords in user message
+            has_chart_keyword = any(keyword in message.lower() for keyword in ['chart', 'graph', 'visualize', 'plot', 'show chart'])
             
-            # Extract title from message context
-            title = "Data Visualization"
-            if "sales" in message.lower():
-                title = "Sales Data"
-            elif "purchase" in message.lower():
-                title = "Purchase Data"
-            elif "customer" in message.lower():
-                title = "Customer Data"
-            elif "employee" in message.lower():
-                title = "Employee Data"
-            elif "status" in message.lower():
-                title = "Status Summary"
+            # Also check if response contains table data (has | characters)
+            has_table = '|' in response_text and response_text.count('|') > 3
             
-            chart_data = parse_table_to_chart(response_text, chart_type, title)
+            if has_chart_keyword and has_table:
+                from erpnext_ai_chat.ai_agent.charts import parse_table_to_chart
+                
+                # Determine chart type from message
+                chart_type = "bar"  # default
+                if "pie" in message.lower():
+                    chart_type = "pie"
+                elif "donut" in message.lower():
+                    chart_type = "donut"
+                elif "line" in message.lower():
+                    chart_type = "line"
+                elif "percentage" in message.lower():
+                    chart_type = "percentage"
+                elif "mixed" in message.lower() or "combo" in message.lower():
+                    chart_type = "axis-mixed"
+                
+                # Extract title from message context
+                title = "Data Visualization"
+                if "sales order" in message.lower():
+                    title = "Sales Orders"
+                elif "sales" in message.lower():
+                    title = "Sales Data"
+                elif "purchase order" in message.lower():
+                    title = "Purchase Orders"
+                elif "purchase" in message.lower():
+                    title = "Purchase Data"
+                elif "customer" in message.lower():
+                    title = "Customer Data"
+                elif "employee" in message.lower():
+                    title = "Employee Data"
+                elif "status" in message.lower():
+                    title = "Status Summary"
+                
+                try:
+                    chart_data = parse_table_to_chart(response_text, chart_type, title)
+                    
+                    # Log for debugging
+                    if chart_data:
+                        frappe.log_error(f"Chart generated successfully: {len(chart_data.get('labels', []))} labels", "AI Chat Chart Success")
+                    else:
+                        frappe.log_error(f"Chart parsing failed for response:\n{response_text[:500]}", "AI Chat Chart Failed")
+                except Exception as e:
+                    frappe.log_error(f"Error generating chart: {str(e)}\n\nResponse:\n{response_text[:500]}", "AI Chat Chart Error")
         
         return {
             "success": response["success"],

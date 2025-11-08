@@ -60,6 +60,7 @@ def parse_table_to_chart(
 ) -> Optional[Dict[str, Any]]:
     """
     Parse a text table and convert to chart data.
+    Supports both markdown tables and plain text tables.
     
     Args:
         table_text: Table formatted text with | separators
@@ -72,53 +73,97 @@ def parse_table_to_chart(
     try:
         lines = table_text.strip().split('\n')
         
-        # Find header row (contains |)
+        # Find header row and data rows
         header_row = None
         data_rows = []
         
         for line in lines:
-            if '|' in line and not line.strip().startswith('-'):
+            line = line.strip()
+            
+            # Skip empty lines
+            if not line:
+                continue
+                
+            # Skip separator lines (all dashes and pipes)
+            if all(c in '-|= \t' for c in line):
+                continue
+            
+            # Skip lines that say "Total:" at the start
+            if line.lower().startswith('total'):
+                continue
+            
+            # Check if line contains pipes (table row)
+            if '|' in line:
+                # Remove leading/trailing pipes
+                line = line.strip('|')
+                
                 if header_row is None:
                     header_row = line
-                elif not line.lower().startswith('total'):
+                else:
                     data_rows.append(line)
         
         if not header_row or not data_rows:
             return None
         
-        # Parse header
-        headers = [h.strip() for h in header_row.split('|')]
+        # Parse header - split by | and clean
+        headers = [h.strip() for h in header_row.split('|') if h.strip()]
+        
+        if len(headers) < 2:
+            return None
         
         # Parse data rows
         labels = []
         datasets = {}
         
         for row in data_rows:
-            values = [v.strip() for v in row.split('|')]
+            # Split by | and clean
+            values = [v.strip() for v in row.split('|') if v.strip()]
             
-            if len(values) != len(headers):
+            # Need at least 2 columns (label + 1 value)
+            if len(values) < 2:
                 continue
             
-            # First column is typically the label
+            # First column is the label (category)
             label = values[0]
-            labels.append(label)
+            if label and label not in labels:
+                labels.append(label)
+            else:
+                continue
             
-            # Rest are data values
-            for i, header in enumerate(headers[1:], 1):
+            # Rest are numeric values
+            for i in range(1, min(len(values), len(headers))):
+                header = headers[i]
+                
                 if header not in datasets:
                     datasets[header] = {"name": header, "values": []}
                 
                 # Try to parse numeric value
                 try:
-                    value_str = values[i].replace('$', '').replace(',', '').strip()
-                    value = float(value_str)
-                    datasets[header]["values"].append(value)
-                except:
-                    # If parsing fails, skip this cell
+                    value_str = values[i]
+                    # Remove currency symbols, commas, and whitespace
+                    value_str = value_str.replace('$', '').replace('₹', '').replace(',', '').replace(' ', '').strip()
+                    
+                    # Try to convert to float
+                    if value_str:
+                        value = float(value_str)
+                        datasets[header]["values"].append(value)
+                    else:
+                        datasets[header]["values"].append(0)
+                except Exception as e:
+                    # If parsing fails, use 0
                     datasets[header]["values"].append(0)
+        
+        # Validate we have data
+        if not labels or not datasets:
+            return None
         
         # Convert datasets dict to list
         dataset_list = list(datasets.values())
+        
+        # Ensure all datasets have same length as labels
+        for dataset in dataset_list:
+            while len(dataset["values"]) < len(labels):
+                dataset["values"].append(0)
         
         return generate_chart_data(
             chart_type=chart_type,
@@ -128,7 +173,7 @@ def parse_table_to_chart(
         )
         
     except Exception as e:
-        frappe.log_error(f"Error parsing table to chart: {str(e)}", "AI Chat Chart")
+        frappe.log_error(f"Error parsing table to chart: {str(e)}\n\nTable text:\n{table_text}", "AI Chat Chart")
         return None
 
 

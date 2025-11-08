@@ -189,10 +189,16 @@ Always respect permissions and provide accurate information."""
                     
                     # Second LLM call with tool results
                     messages.append(AIMessage(content=response_text))
-                    messages.append(HumanMessage(content=f"Tool result:\n{tool_result}\n\nPlease provide your final answer based on this data."))
+                    messages.append(HumanMessage(content=f"Tool result:\n{tool_result}\n\nPresent this data in a clean format. DO NOT say 'chart will be displayed' or 'graphical chart'. Just show the data."))
                     
                     final_response = self.llm.invoke(messages)
                     answer = final_response.content
+                    
+                    # Remove any chart-related statements from answer
+                    answer = answer.replace("The graphical chart will now be displayed.", "")
+                    answer = answer.replace("The chart will be displayed below.", "")
+                    answer = answer.replace("Chart visualization:", "")
+                    answer = answer.strip()
                 else:
                     answer = response_text
             else:
