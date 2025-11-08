@@ -9,6 +9,7 @@ An intelligent AI-powered chat assistant for ERPNext that uses **LangChain** and
 ## ✨ Features
 
 - 🗣️ **Natural Language Queries** - Ask questions in plain English
+- 🎤 **Voice Recognition** - Speak your queries instead of typing! (NEW!)
 - 🔧 **7 Specialized Tools** - Query customers, items, sales orders, purchase orders, stock, and more
 - 🧠 **Context-Aware** - Remembers conversation history for multi-turn dialogues
 - 🔐 **Permission-Based** - Respects ERPNext user permissions
@@ -54,9 +55,14 @@ An intelligent AI-powered chat assistant for ERPNext that uses **LangChain** and
 
 6. **Start chatting!**
    - Click the **"AI Assistant"** button in the navbar
+   - Type or click 🎤 to use **voice input**
    - Ask: "Show me pending sales orders"
 
 ## 💡 Example Queries
+
+### 🎤 Voice or Type - Your Choice!
+
+Click the microphone button and speak, or type your queries:
 
 ### Sales & Orders
 ```
@@ -108,6 +114,7 @@ User Query → Chat UI → API → AI Agent → LangChain → Tools → ERPNext 
 
 - [Quick Start Guide](QUICKSTART.md) - Get started in 5 minutes
 - [Setup Guide](SETUP_GUIDE.md) - Detailed installation and configuration
+- [Voice Feature Guide](VOICE_FEATURE.md) - Using voice recognition (NEW!)
 - [Project Structure](PROJECT_STRUCTURE.md) - Technical architecture and code organization
 
 ## 🔧 Available Tools
