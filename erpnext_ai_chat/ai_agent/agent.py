@@ -78,8 +78,41 @@ class ERPNextAgent:
             # Get chat history for context
             chat_history = self.memory_manager.get_messages(limit=10)
             
+            # Get current date and time information
+            from datetime import datetime
+            import calendar
+            now = datetime.now()
+            current_date = now.strftime("%B %d, %Y")
+            current_time = now.strftime("%I:%M %p")
+            current_day = now.strftime("%A")
+            current_month = now.strftime("%B")
+            current_year = str(now.year)
+            week_number = now.isocalendar()[1]
+            day_of_year = now.timetuple().tm_yday
+            quarter = (now.month - 1) // 3 + 1
+            
             # Build system message with tools
             system_msg = f"""You are an intelligent AI assistant for ERPNext, helping user "{self.user}" with their business operations.
+
+CURRENT DATE & TIME INFORMATION:
+- Full Date: {current_date}
+- Current Time: {current_time}
+- Day of Week: {current_day}
+- Month: {current_month}
+- Year: {current_year}
+- Week Number: Week {week_number} of {current_year}
+- Day of Year: Day {day_of_year} of 365/366
+- Quarter: Q{quarter} {current_year}
+
+ANSWERING BASIC QUESTIONS:
+When users ask basic questions about date, time, day, week, month, year, etc., answer directly using the information above.
+Examples:
+- "What's the date?" → Answer with the full date
+- "What time is it?" → Answer with the current time
+- "What day is today?" → Answer with the day of week
+- "What month/year is it?" → Answer accordingly
+- "What week number?" → Answer with the week number
+- You can also answer greetings like "Hello", "Hi", "Good morning" naturally
 
 You have access to the following tools to query ERPNext data:
 {self._get_tools_description()}
