@@ -1,0 +1,211 @@
+.ai-chat-wrapper {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.ai-chat-messages {
+    display: flex;
+    flex-direction: column;
+}
+
+.user-message {
+    align-self: flex-end;
+}
+
+.ai-message {
+    align-self: flex-start;
+}
+
+.typing-indicator .dots span {
+    animation: blink 1.4s infinite;
+    animation-fill-mode: both;
+}
+
+.typing-indicator .dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-indicator .dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes blink {
+    0%, 80%, 100% {
+        opacity: 0;
+    }
+    40% {
+        opacity: 1;
+    }
+}
+
+.ai-chat-input:focus {
+    outline: none;
+    border-color: #2490ef;
+    box-shadow: 0 0 0 0.2rem rgba(36, 144, 239, 0.25);
+}
+
+.ai-chat-send {
+    white-space: nowrap;
+}
+
+.welcome-message ul li {
+    margin: 5px 0;
+    color: #666;
+}
+
+/* Voice Input Styling */
+.ai-chat-voice {
+    padding: 8px 16px;
+    font-size: 1.2em;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.ai-chat-voice:hover {
+    background-color: #f0f0f0;
+    border-color: #ddd;
+}
+
+/* Voice wave icon */
+.voice-wave-icon {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.voice-wave-icon .wave-bar {
+    transform-origin: center;
+    transition: all 0.2s ease;
+}
+
+/* Listening state - animate the wave bars */
+.ai-chat-voice.listening {
+    background-color: #ff4444 !important;
+    color: white !important;
+    animation: pulse 1.5s infinite;
+}
+
+.ai-chat-voice.listening .wave-bar {
+    animation: wave-bounce 0.6s infinite ease-in-out;
+}
+
+.ai-chat-voice.listening .bar-1 {
+    animation-delay: 0s;
+}
+
+.ai-chat-voice.listening .bar-2 {
+    animation-delay: 0.1s;
+}
+
+.ai-chat-voice.listening .bar-3 {
+    animation-delay: 0.2s;
+}
+
+.ai-chat-voice.listening .bar-4 {
+    animation-delay: 0.3s;
+}
+
+.ai-chat-voice.listening .bar-5 {
+    animation-delay: 0.4s;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(255, 68, 68, 0);
+    }
+}
+
+@keyframes wave-bounce {
+    0%, 100% {
+        transform: scaleY(1);
+    }
+    50% {
+        transform: scaleY(0.5);
+    }
+}
+
+.voice-status {
+    display: inline-block;
+    transition: transform 0.2s;
+}
+
+.voice-hint {
+    user-select: none;
+}
+
+/* Listening state visual feedback */
+.ai-chat-input.listening {
+    border-color: #f00;
+    animation: input-pulse 1.5s infinite;
+}
+
+@keyframes input-pulse {
+    0%, 100% {
+        border-color: #ced4da;
+    }
+    50% {
+        border-color: #ff0000;
+    }
+}
+
+/* HTML Table Styling for AI responses */
+.ai-message .table {
+    background: white;
+    font-size: 0.9em;
+    margin: 10px 0;
+}
+
+.ai-message .table th {
+    background-color: #2490ef;
+    color: white;
+    padding: 8px 12px;
+    font-weight: 600;
+    text-align: left;
+    border-bottom: 2px solid #1a6fc9;
+}
+
+.ai-message .table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.ai-message .table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.ai-message .table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.ai-message .table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.ai-message .sales-orders-summary h4,
+.ai-message .sales-orders-list h4 {
+    margin-bottom: 10px;
+    color: #333;
+    font-size: 1.1em;
+    font-weight: 600;
+}
+
+.ai-message .indicator-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background-color: #e8f5e9;
+    color: #2e7d32;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.ai-message a {
+    color: #2490ef;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.ai-message a:hover {
+    text-decoration: underline;
+}
